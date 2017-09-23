@@ -5,3 +5,9 @@
 *.log
 *.tmp
 
+
+*.mdb
+
+*.sh
+
+\.vscode/

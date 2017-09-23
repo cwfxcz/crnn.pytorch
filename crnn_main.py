@@ -30,11 +30,13 @@ parser.add_argument('--imgH', type=int, default=32, help='the height of the inpu
 parser.add_argument('--imgW', type=int, default=100, help='the width of the input image to network')
 parser.add_argument('--nh', type=int, default=256, help='size of the lstm hidden state')
 parser.add_argument('--nepochs', type=int, default=25, help='number of epochs to train for')
-parser.add_argument('--lr', type=float, default=0.01, help='learning rate for Critic, default=0.00005')
+parser.add_argument('--lr', type=float, default=0.01, help='learning rate for Critic, default=0.01')
 parser.add_argument('--beta1', type=float, default=0.5, help='beta1 for adam. default=0.5')
 parser.add_argument('--cuda', action='store_true', help='enables cuda')
 parser.add_argument('--ngpu', type=int, default=1, help='number of GPUs to use')
+parser.add_argument('--gpu_idx', action='store_true', help='specific which gpu to use')
 # parser.add_argument('--crnn', default='', help="path to crnn (to continue training)")
+# parser.add_argument('--alphabet', type=str, default='0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ')
 parser.add_argument('--alphabet', type=str, default='0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ')
 parser.add_argument('--checkpoints_dir', default='expr', help='Where to store samples and models')
 parser.add_argument('--displayInterval', type=int, default=500, help='Interval to be displayed')
@@ -134,7 +136,10 @@ length = torch.IntTensor(opt.batchSize)
 
 if opt.cuda:
     crnn.cuda()
-    crnn = torch.nn.DataParallel(crnn, device_ids=range(opt.ngpu))
+    if opt.gpu_idx:
+        crnn = torch.nn.DataParallel(crnn, device_ids=range(opt.gpu_idx, opt.gpu_idx+opt.ngpu) )
+    else:
+        crnn = torch.nn.DataParallel(crnn, device_ids=range(opt.ngpu))
     image = image.cuda()
     criterion = criterion.cuda()
 
@@ -218,7 +223,6 @@ def val(net, dataset, criterion, max_iter=100):
 def trainBatch(net, criterion, optimizer):
     data = train_iter.next()
     cpu_images, cpu_texts = data
-    import pdb; pdb.set_trace()
     batch_size = cpu_images.size(0)
     utils.loadData(image, cpu_images)
     t, l = converter.encode(cpu_texts)
