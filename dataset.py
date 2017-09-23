@@ -30,8 +30,9 @@ class lmdbDataset(Dataset):
 
         with self.env.begin(write=False) as txn:
             nSamples = int(txn.get('num-samples'))
+            print ('total sample: ', nSamples)
             self.nSamples = nSamples
-
+            
         self.transform = transform
         self.target_transform = target_transform
 
@@ -49,7 +50,9 @@ class lmdbDataset(Dataset):
             buf.write(imgbuf)
             buf.seek(0)
             try:
-                img = Image.open(buf).convert('L')
+                # img = Image.open(buf)
+                img = Image.open(buf).convert('RGB')
+                # img = Image.open(buf).convert('L')
             except IOError:
                 print('Corrupted image for %d' % index)
                 return self[index + 1]
@@ -76,7 +79,7 @@ class resizeNormalize(object):
     def __call__(self, img):
         img = img.resize(self.size, self.interpolation)
         img = self.toTensor(img)
-        img.sub_(0.5).div_(0.5)
+        # img.sub_(0.5).div_(0.5)
         return img
 
 
@@ -90,6 +93,7 @@ class randomSequentialSampler(sampler.Sampler):
         n_batch = len(self) // self.batch_size
         tail = len(self) % self.batch_size
         index = torch.LongTensor(len(self)).fill_(0)
+        import pdb; pdb.set_trace()
         for i in range(n_batch):
             random_start = random.randint(0, len(self) - self.batch_size)
             batch_index = random_start + torch.range(0, self.batch_size - 1)
@@ -132,5 +136,5 @@ class alignCollate(object):
         transform = resizeNormalize((imgW, imgH))
         images = [transform(image) for image in images]
         images = torch.cat([t.unsqueeze(0) for t in images], 0)
-
+        
         return images, labels
