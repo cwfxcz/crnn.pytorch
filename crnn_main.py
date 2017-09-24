@@ -34,9 +34,7 @@ parser.add_argument('--lr', type=float, default=0.01, help='learning rate for Cr
 parser.add_argument('--beta1', type=float, default=0.5, help='beta1 for adam. default=0.5')
 parser.add_argument('--cuda', action='store_true', help='enables cuda')
 parser.add_argument('--ngpu', type=int, default=1, help='number of GPUs to use')
-parser.add_argument('--gpu_idx', action='store_true', help='specific which gpu to use')
-# parser.add_argument('--crnn', default='', help="path to crnn (to continue training)")
-# parser.add_argument('--alphabet', type=str, default='0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ')
+parser.add_argument('--gpu_idx', type=int, default=0, help='specific which gpu to use')
 parser.add_argument('--alphabet', type=str, default='0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ')
 parser.add_argument('--checkpoints_dir', default='expr', help='Where to store samples and models')
 parser.add_argument('--displayInterval', type=int, default=500, help='Interval to be displayed')
@@ -47,7 +45,6 @@ parser.add_argument('--adam', action='store_true', help='Whether to use adam (de
 parser.add_argument('--adadelta', action='store_true', help='Whether to use adadelta (default is rmsprop)')
 parser.add_argument('--keep_ratio', action='store_true', help='whether to keep ratio for image resize')
 parser.add_argument('--random_sample', action='store_true', help='whether to sample the dataset with random sampler')
-
 # for visualize.
 parser.add_argument('--display_freq', type=int, default=100, help='frequency of showing training results on screen')
 parser.add_argument('--print_freq', type=int, default=100, help='frequency of showing training results on console')
@@ -101,7 +98,8 @@ test_dataset = dataset.lmdbDataset(
 
 nclass = len(opt.alphabet) + 1
 
-converter = utils.strLabelConverter(opt.alphabet, ignore_case=False)
+ignore_case = len(opt.alphabet)==36
+converter = utils.strLabelConverter(opt.alphabet, ignore_case=ignore_case)
 criterion = CTCLoss()
 
 
@@ -135,13 +133,14 @@ text = torch.IntTensor(opt.batchSize * 5)
 length = torch.IntTensor(opt.batchSize)
 
 if opt.cuda:
-    crnn.cuda()
-    if opt.gpu_idx:
+    if opt.gpu_idx != -1:
+        torch.cuda.set_device(opt.gpu_idx)
         crnn = torch.nn.DataParallel(crnn, device_ids=range(opt.gpu_idx, opt.gpu_idx+opt.ngpu) )
     else:
+        crnn.cuda()
         crnn = torch.nn.DataParallel(crnn, device_ids=range(opt.ngpu))
-    image = image.cuda()
-    criterion = criterion.cuda()
+        image = image.cuda()
+        criterion = criterion.cuda()
 
 image = Variable(image)
 text = Variable(text)
@@ -170,7 +169,6 @@ def val(net, dataset, criterion, max_iter=100):
     data_loader = torch.utils.data.DataLoader(
         dataset, shuffle=True, batch_size=opt.batchSize, num_workers=int(opt.workers))
     val_iter = iter(data_loader)
-
     epoch_iter = 0
     n_correct = 0
     loss_avg = utils.averager()
@@ -205,10 +203,18 @@ def val(net, dataset, criterion, max_iter=100):
         sim_preds = converter.decode(preds.data, preds_size.data, raw=False)
         
         for pred, target in zip(sim_preds, cpu_texts):
-            if pred == target.lower():
-                n_correct += 1
+            if len(opt.alphabet) == 36:
+                if pred == target.lower():
+                    n_correct += 1
+            else: 
+                if pred == target:
+                    n_correct += 1
+                    
             # add edit distance.
-            edit_distance += Lev.distance(pred, target)
+            if len(opt.alphabet) == 36:
+                edit_distance += Lev.distance(pred, target.lower() )
+            else:
+                edit_distance += Lev.distance(pred, target)        
 
     raw_preds = converter.decode(preds.data, preds_size.data, raw=True)[:opt.n_test_disp]
     for raw_pred, pred, gt in zip(raw_preds, sim_preds, cpu_texts):
@@ -275,4 +281,4 @@ for epoch in range(opt.nepochs):
         if total_step % opt.saveInterval == 0:
             torch.save(
                 crnn.state_dict(), 
-                '{0}/netCRNN_{1}_{2}.pth'.format(opt.checkpoints_dir, epoch, epoch_iter))
+                '{0}/netCRNN_{1}_{2}_{3}.pth'.format(opt.checkpoints_dir, opt.gpu_idx, epoch, epoch_iter))
